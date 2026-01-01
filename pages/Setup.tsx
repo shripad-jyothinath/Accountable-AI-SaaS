@@ -70,31 +70,31 @@ export default function Setup() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8 bg-white p-10 rounded-xl shadow-xl">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8 transition-colors duration-200">
+      <div className="max-w-md w-full space-y-8 bg-white dark:bg-gray-800 p-10 rounded-xl shadow-xl border border-gray-100 dark:border-gray-700">
         <div className="text-center">
-          <div className="mx-auto h-16 w-16 bg-indigo-100 rounded-full flex items-center justify-center mb-4">
-            <Database className="h-8 w-8 text-indigo-600" />
+          <div className="mx-auto h-16 w-16 bg-indigo-100 dark:bg-indigo-900 rounded-full flex items-center justify-center mb-4">
+            <Database className="h-8 w-8 text-indigo-600 dark:text-indigo-400" />
           </div>
-          <h2 className="text-3xl font-extrabold text-gray-900">Connect Backend</h2>
-          <p className="mt-2 text-sm text-gray-600">
+          <h2 className="text-3xl font-extrabold text-gray-900 dark:text-white">Connect Backend</h2>
+          <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
             Enter your Supabase credentials to enable live data.
           </p>
         </div>
 
         {isSupabaseConfigured ? (
-          <div className="bg-green-50 border-l-4 border-green-400 p-4 rounded-md">
+          <div className="bg-green-50 dark:bg-green-900/30 border-l-4 border-green-400 p-4 rounded-md">
             <div className="flex">
               <div className="flex-shrink-0">
                 <Database className="h-5 w-5 text-green-400" />
               </div>
               <div className="ml-3">
-                <p className="text-sm text-green-700">
+                <p className="text-sm text-green-700 dark:text-green-300">
                   <strong>Connected!</strong> Your app is currently linked to a Supabase project.
                 </p>
                 <button 
                   onClick={handleDisconnect}
-                  className="mt-3 text-sm font-medium text-red-600 hover:text-red-500 underline"
+                  className="mt-3 text-sm font-medium text-red-600 hover:text-red-500 dark:text-red-400 dark:hover:text-red-300 underline"
                 >
                   Disconnect & Reset
                 </button>
@@ -113,14 +113,14 @@ export default function Setup() {
           <form className="mt-8 space-y-6" onSubmit={handleSave}>
             <div className="rounded-md shadow-sm space-y-4">
               <div>
-                <label htmlFor="url" className="block text-sm font-medium text-gray-700">Project URL</label>
+                <label htmlFor="url" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Project URL</label>
                 <div className="mt-1 flex rounded-md shadow-sm">
                   <input
                     id="url"
                     name="url"
                     type="url"
                     required
-                    className="flex-1 appearance-none block w-full px-3 py-2 border border-gray-300 rounded-none rounded-l-md sm:text-sm focus:ring-indigo-500 focus:border-indigo-500"
+                    className="flex-1 appearance-none block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-none rounded-l-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white sm:text-sm focus:ring-indigo-500 focus:border-indigo-500"
                     placeholder="https://xyz.supabase.co"
                     value={url}
                     onChange={(e) => setUrl(e.target.value)}
@@ -129,7 +129,7 @@ export default function Setup() {
                     type="button"
                     onClick={() => attemptAutoDiscovery(url)}
                     disabled={autoFetching || !url}
-                    className="inline-flex items-center px-3 rounded-r-md border border-l-0 border-gray-300 bg-gray-50 text-gray-500 sm:text-sm hover:bg-gray-100 disabled:opacity-50"
+                    className="inline-flex items-center px-3 rounded-r-md border border-l-0 border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-600 text-gray-500 dark:text-gray-300 sm:text-sm hover:bg-gray-100 dark:hover:bg-gray-500 disabled:opacity-50"
                     title="Try to fetch config from server"
                   >
                     {autoFetching ? <RefreshCw className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
@@ -138,13 +138,13 @@ export default function Setup() {
               </div>
               
               <div>
-                <label htmlFor="key" className="block text-sm font-medium text-gray-700">Anon Key (Public)</label>
+                <label htmlFor="key" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Anon Key (Public)</label>
                 <input
                   id="key"
                   name="key"
                   type="text"
                   required
-                  className="mt-1 appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                  className="mt-1 appearance-none block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm placeholder-gray-400 dark:placeholder-gray-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
                   placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
                   value={key}
                   onChange={(e) => setKey(e.target.value)}
@@ -153,13 +153,13 @@ export default function Setup() {
             </div>
             
             {fetchMessage && (
-               <div className={`text-xs flex items-center ${fetchMessage.includes('found') ? 'text-green-600' : 'text-gray-500'}`}>
+               <div className={`text-xs flex items-center ${fetchMessage.includes('found') ? 'text-green-600 dark:text-green-400' : 'text-gray-500 dark:text-gray-400'}`}>
                  {fetchMessage.includes('found') && <Check className="w-3 h-3 mr-1" />}
                  {fetchMessage}
                </div>
             )}
 
-            <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 text-xs text-yellow-700">
+            <div className="bg-yellow-50 dark:bg-yellow-900/30 border-l-4 border-yellow-400 p-4 text-xs text-yellow-700 dark:text-yellow-200">
               <p className="flex items-start">
                 <AlertCircle className="w-4 h-4 mr-1 flex-shrink-0" />
                 These keys are saved to your browser's Local Storage. Do not use this method on shared public computers.

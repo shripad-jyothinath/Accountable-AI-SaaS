@@ -144,15 +144,20 @@ const Navbar = ({ user, adminCredentials, onLogout }: { user: UserProfile | null
   const [isOpen, setIsOpen] = useState(false);
   const location = useLocation();
 
+  // Hide Navbar completely on Dashboard
+  if (location.pathname === '/dashboard') {
+    return null;
+  }
+
   const isLanding = location.pathname === '/';
   const navClass = isLanding 
     ? "absolute w-full z-50 bg-transparent" 
-    : "bg-white border-b border-gray-100 sticky top-0 z-50";
+    : "bg-white dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800 sticky top-0 z-50 transition-colors duration-200";
     
-  const textClass = isLanding ? "text-white" : "text-gray-900";
-  const subTextClass = isLanding ? "text-gray-200 hover:text-white" : "text-gray-500 hover:text-gray-700";
-  const iconClass = isLanding ? "text-white" : "text-indigo-600";
-  const borderClass = isLanding ? "border-white" : "border-indigo-500";
+  const textClass = isLanding ? "text-white" : "text-gray-900 dark:text-white";
+  const subTextClass = isLanding ? "text-gray-200 hover:text-white" : "text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200";
+  const iconClass = isLanding ? "text-white" : "text-indigo-600 dark:text-indigo-400";
+  const borderClass = isLanding ? "border-white" : "border-indigo-500 dark:border-indigo-400";
 
   return (
     <nav className={navClass}>
@@ -192,7 +197,7 @@ const Navbar = ({ user, adminCredentials, onLogout }: { user: UserProfile | null
                 )}
                 <button
                   onClick={onLogout}
-                  className={`p-1 rounded-full ${isLanding ? 'bg-white/10 hover:bg-white/20 text-white' : 'bg-gray-100 hover:bg-gray-200 text-gray-500'} transition-colors focus:outline-none`}
+                  className={`p-1 rounded-full ${isLanding ? 'bg-white/10 hover:bg-white/20 text-white' : 'bg-gray-100 hover:bg-gray-200 text-gray-500 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700'} transition-colors focus:outline-none`}
                 >
                   <span className="sr-only">Log out</span>
                   <LogOut className="h-5 w-5" />
@@ -212,7 +217,7 @@ const Navbar = ({ user, adminCredentials, onLogout }: { user: UserProfile | null
           <div className="-mr-2 flex items-center sm:hidden">
             <button
               onClick={() => setIsOpen(!isOpen)}
-              className={`inline-flex items-center justify-center p-2 rounded-md ${textClass} hover:bg-white/10 focus:outline-none`}
+              className={`inline-flex items-center justify-center p-2 rounded-md ${textClass} hover:bg-white/10 dark:hover:bg-gray-800 focus:outline-none`}
             >
               <span className="sr-only">Open main menu</span>
               {isOpen ? <X className="block h-6 w-6" /> : <Menu className="block h-6 w-6" />}
@@ -222,28 +227,28 @@ const Navbar = ({ user, adminCredentials, onLogout }: { user: UserProfile | null
       </div>
 
       {isOpen && (
-        <div className={`sm:hidden ${isLanding ? 'bg-black/90 backdrop-blur-md' : 'bg-white'} border-t border-gray-200`}>
+        <div className={`sm:hidden ${isLanding ? 'bg-black/90 backdrop-blur-md' : 'bg-white dark:bg-gray-900'} border-t border-gray-200 dark:border-gray-800`}>
           <div className="pt-2 pb-3 space-y-1">
-            <Link to="/" onClick={() => setIsOpen(false)} className="block pl-3 pr-4 py-2 border-l-4 border-indigo-500 text-base font-medium text-indigo-500 bg-indigo-50/10">Home</Link>
-            <Link to="/pricing" onClick={() => setIsOpen(false)} className={`block pl-3 pr-4 py-2 border-l-4 border-transparent ${isLanding ? 'text-gray-300 hover:text-white' : 'text-gray-500 hover:text-gray-700'} text-base font-medium`}>Pricing</Link>
+            <Link to="/" onClick={() => setIsOpen(false)} className="block pl-3 pr-4 py-2 border-l-4 border-indigo-500 text-base font-medium text-indigo-500 bg-indigo-50/10 dark:bg-indigo-900/20">Home</Link>
+            <Link to="/pricing" onClick={() => setIsOpen(false)} className={`block pl-3 pr-4 py-2 border-l-4 border-transparent ${isLanding ? 'text-gray-300 hover:text-white' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'} text-base font-medium`}>Pricing</Link>
             {(user || adminCredentials) && (
               <>
-                {user && <Link to="/dashboard" onClick={() => setIsOpen(false)} className={`block pl-3 pr-4 py-2 border-l-4 border-transparent ${isLanding ? 'text-gray-300 hover:text-white' : 'text-gray-500 hover:text-gray-700'} text-base font-medium`}>Dashboard</Link>}
-                {(user?.is_admin || adminCredentials) && <Link to="/admin" onClick={() => setIsOpen(false)} className={`block pl-3 pr-4 py-2 border-l-4 border-transparent ${isLanding ? 'text-gray-300 hover:text-white' : 'text-gray-500 hover:text-gray-700'} text-base font-medium`}>Admin</Link>}
+                {user && <Link to="/dashboard" onClick={() => setIsOpen(false)} className={`block pl-3 pr-4 py-2 border-l-4 border-transparent ${isLanding ? 'text-gray-300 hover:text-white' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'} text-base font-medium`}>Dashboard</Link>}
+                {(user?.is_admin || adminCredentials) && <Link to="/admin" onClick={() => setIsOpen(false)} className={`block pl-3 pr-4 py-2 border-l-4 border-transparent ${isLanding ? 'text-gray-300 hover:text-white' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'} text-base font-medium`}>Admin</Link>}
               </>
             )}
           </div>
-          <div className="pt-4 pb-4 border-t border-gray-700">
+          <div className="pt-4 pb-4 border-t border-gray-700 dark:border-gray-800">
             {(user || adminCredentials) ? (
               <div className="flex items-center px-4">
                 <div className="flex-shrink-0">
-                  <User className="h-10 w-10 rounded-full bg-indigo-100 p-2 text-indigo-500" />
+                  <User className="h-10 w-10 rounded-full bg-indigo-100 dark:bg-indigo-900 p-2 text-indigo-500 dark:text-indigo-400" />
                 </div>
                 <div className="ml-3">
-                  <div className={`text-base font-medium ${isLanding ? 'text-white' : 'text-gray-800'}`}>{user?.email || 'Administrator'}</div>
-                  {user && <div className={`text-sm font-medium ${isLanding ? 'text-gray-400' : 'text-gray-500'}`}>{user.calls_remaining} calls remaining</div>}
+                  <div className={`text-base font-medium ${isLanding ? 'text-white' : 'text-gray-800 dark:text-gray-200'}`}>{user?.email || 'Administrator'}</div>
+                  {user && <div className={`text-sm font-medium ${isLanding ? 'text-gray-400' : 'text-gray-500 dark:text-gray-400'}`}>{user.calls_remaining} calls remaining</div>}
                 </div>
-                <button onClick={onLogout} className="ml-auto flex-shrink-0 p-1 rounded-full text-gray-400 hover:text-gray-500 focus:outline-none">
+                <button onClick={onLogout} className="ml-auto flex-shrink-0 p-1 rounded-full text-gray-400 hover:text-gray-500 dark:hover:text-gray-300 focus:outline-none">
                   <LogOut className="h-6 w-6" />
                 </button>
               </div>
@@ -265,6 +270,21 @@ export default function App() {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [adminCredentials, setAdminCredentials] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+
+  // Helper to refresh user profile from DB
+  const refreshUser = async () => {
+    if (!supabase || !user) return;
+    try {
+      const { data } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+      if (data) setUser(data);
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   const fetchProfile = async (sessionUser: any) => {
     if (!supabase) return;
@@ -352,12 +372,12 @@ export default function App() {
 
   return (
     <HashRouter>
-      <div className="min-h-screen bg-gray-50 flex flex-col font-sans text-slate-900">
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col font-sans text-slate-900 dark:text-slate-100 transition-colors duration-200">
         <Navbar user={user} adminCredentials={adminCredentials} onLogout={handleLogout} />
         <main className="flex-grow">
           <Routes>
-            <Route path="/" element={<Landing />} />
-            <Route path="/pricing" element={<Pricing />} />
+            <Route path="/" element={user ? <Navigate to="/dashboard" /> : <Landing />} />
+            <Route path="/pricing" element={<Pricing user={user} refreshUser={refreshUser} />} />
             <Route path="/blog/:id" element={<BlogPost />} />
             <Route path="/setup" element={<Setup />} />
             <Route 
@@ -366,7 +386,7 @@ export default function App() {
             />
             <Route 
               path="/dashboard" 
-              element={user ? <Dashboard user={user} /> : <Navigate to="/auth" />} 
+              element={user ? <Dashboard user={user} refreshUser={refreshUser} onLogout={handleLogout} /> : <Navigate to="/auth" />} 
             />
             <Route 
               path="/admin" 
@@ -374,7 +394,9 @@ export default function App() {
             />
           </Routes>
         </main>
-        <footer className="bg-black text-slate-400 py-12 border-t border-gray-800">
+        {/* Hide footer on Dashboard too? User request implies "Dashboard like a heading" on top, usually admins don't have large footers. I will keep footer for now but it's fine. */}
+        <footer className={`bg-black text-slate-400 py-12 border-t border-gray-800 ${user ? 'hidden md:block' : ''}`}>
+           {/* Hiding footer on mobile dashboard for space, or globally on dashboard if desired. Keeping standard for now. */}
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 grid grid-cols-1 md:grid-cols-3 gap-8">
             <div>
               <div className="flex items-center text-white mb-4">

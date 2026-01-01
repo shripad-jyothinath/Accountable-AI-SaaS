@@ -12,7 +12,7 @@ export default function BlogPost() {
   }
 
   return (
-    <div className="bg-white min-h-screen pb-20">
+    <div className="bg-white dark:bg-gray-900 min-h-screen pb-20 transition-colors duration-200">
       {/* Header Image */}
       <div className="w-full h-96 relative">
         <img 
@@ -44,15 +44,15 @@ export default function BlogPost() {
       {/* Content */}
       <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div 
-          className="prose prose-indigo prose-lg mx-auto text-gray-700"
+          className="prose prose-indigo dark:prose-invert prose-lg mx-auto text-gray-700 dark:text-gray-300"
           dangerouslySetInnerHTML={{ __html: post.content }}
         />
         
-        <div className="mt-16 border-t border-gray-200 pt-10">
-          <div className="bg-indigo-50 rounded-2xl p-8 flex flex-col md:flex-row items-center justify-between">
+        <div className="mt-16 border-t border-gray-200 dark:border-gray-800 pt-10">
+          <div className="bg-indigo-50 dark:bg-gray-800 rounded-2xl p-8 flex flex-col md:flex-row items-center justify-between shadow-sm">
             <div className="mb-6 md:mb-0 md:mr-6">
-              <h3 className="text-xl font-bold text-gray-900 mb-2">Ready to apply these concepts?</h3>
-              <p className="text-gray-600">Stop reading and start doing with live human verification.</p>
+              <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Ready to apply these concepts?</h3>
+              <p className="text-gray-600 dark:text-gray-300">Stop reading and start doing with live human verification.</p>
             </div>
             <Link
               to="/pricing"

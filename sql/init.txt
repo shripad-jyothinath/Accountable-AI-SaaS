@@ -3,6 +3,7 @@ create table public.profiles (
   id uuid references auth.users not null primary key,
   email text,
   full_name text,
+  whatsapp_number text,
   tier text default 'NONE', -- 'NONE', 'BASIC', 'PRO'
   calls_remaining integer default 0,
   is_admin boolean default false,
@@ -20,6 +21,11 @@ create policy "Users can update own profile"
   on public.profiles for update
   using ( auth.uid() = id );
 
+-- POLICY: Allow Admins to view all profiles
+create policy "Admins can view all profiles"
+  on public.profiles for select
+  using ( (select is_admin from public.profiles where id = auth.uid()) = true );
+
 -- 3. Create Tasks Table
 create table public.tasks (
   id uuid default gen_random_uuid() primary key,
@@ -27,6 +33,7 @@ create table public.tasks (
   title text not null,
   description text,
   scheduled_at timestamp with time zone not null,
+  end_at timestamp with time zone,
   status text default 'pending', -- 'pending', 'verified', 'missed'
   notes text,
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
@@ -39,15 +46,26 @@ create policy "Users can CRUD own tasks"
   on public.tasks for all
   using ( auth.uid() = user_id );
 
+-- POLICY: Allow Admins to view ALL tasks
+create policy "Admins can view all tasks"
+  on public.tasks for select
+  using ( (select is_admin from public.profiles where id = auth.uid()) = true );
+
+-- POLICY: Allow Admins to update ALL tasks (for verification)
+create policy "Admins can update all tasks"
+  on public.tasks for update
+  using ( (select is_admin from public.profiles where id = auth.uid()) = true );
+
 -- 5. Create Trigger to auto-create profile on Sign Up
 create or replace function public.handle_new_user()
 returns trigger as $$
 begin
-  insert into public.profiles (id, email, full_name, tier, calls_remaining, is_admin)
+  insert into public.profiles (id, email, full_name, whatsapp_number, tier, calls_remaining, is_admin)
   values (
     new.id,
     new.email,
     new.raw_user_meta_data->>'full_name',
+    new.raw_user_meta_data->>'whatsapp_number',
     'NONE',
     0,
     false
@@ -59,3 +77,19 @@ $$ language plpgsql security definer;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure public.handle_new_user();
+
+-- 6. ADMIN VIEW (The "Task Table" request)
+-- Run this to create the joined view for the dashboard
+create or replace view public.admin_task_overview as
+select
+  t.id as task_id,
+  t.title,
+  t.description,
+  t.status,
+  t.scheduled_at,
+  t.end_at,
+  p.id as user_id,
+  p.email as user_email,
+  p.whatsapp_number
+from public.tasks t
+join public.profiles p on t.user_id = p.id;

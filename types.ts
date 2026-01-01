@@ -8,6 +8,7 @@ export interface UserProfile {
   id: string;
   email: string;
   full_name?: string;
+  whatsapp_number?: string;
   tier: SubscriptionTier;
   calls_remaining: number;
   is_admin: boolean;
@@ -20,6 +21,7 @@ export interface Task {
   title: string;
   description?: string;
   scheduled_at: string;
+  end_at?: string;
   status: 'pending' | 'verified' | 'missed';
   notes?: string;
 }

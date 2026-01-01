@@ -116,21 +116,21 @@ export default function Landing() {
         </div>
       </div>
 
-      {/* Blog Section - Light/Clean contrast */}
-      <div className="bg-gray-50 py-24">
+      {/* Blog Section - Light/Clean contrast in Light Mode, Dark in Dark Mode */}
+      <div className="bg-gray-50 dark:bg-gray-950 py-24 transition-colors duration-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
-            <h2 className="text-3xl font-extrabold text-gray-900 sm:text-4xl">
+            <h2 className="text-3xl font-extrabold text-gray-900 dark:text-white sm:text-4xl">
               The Science of Accountability
             </h2>
-            <p className="mt-4 text-xl text-gray-500 max-w-2xl mx-auto">
+            <p className="mt-4 text-xl text-gray-500 dark:text-gray-400 max-w-2xl mx-auto">
               Why working alone is failing you, and why human connection is the solution.
             </p>
           </div>
           
           <div className="grid gap-8 lg:grid-cols-3">
             {BLOG_POSTS.map((post) => (
-              <Link key={post.id} to={`/blog/${post.id}`} className="flex flex-col rounded-2xl shadow-lg overflow-hidden bg-white hover:shadow-2xl transition-shadow duration-300 transform hover:-translate-y-1">
+              <Link key={post.id} to={`/blog/${post.id}`} className="flex flex-col rounded-2xl shadow-lg overflow-hidden bg-white dark:bg-gray-900 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 border border-transparent dark:border-gray-800">
                 <div className="flex-shrink-0 relative h-48">
                   <img className="h-full w-full object-cover" src={post.image} alt={post.title} />
                   <div className="absolute top-4 left-4">
@@ -141,14 +141,14 @@ export default function Landing() {
                 </div>
                 <div className="flex-1 p-6 flex flex-col justify-between">
                   <div className="flex-1">
-                    <h3 className="text-xl font-bold text-gray-900 mb-3 group-hover:text-indigo-600 transition-colors">
+                    <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-3 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
                       {post.title}
                     </h3>
-                    <p className="text-base text-gray-500 line-clamp-3">
+                    <p className="text-base text-gray-500 dark:text-gray-400 line-clamp-3">
                       {post.excerpt}
                     </p>
                   </div>
-                  <div className="mt-6 flex items-center text-sm text-gray-500 font-medium">
+                  <div className="mt-6 flex items-center text-sm text-gray-500 dark:text-gray-400 font-medium">
                     <Clock className="flex-shrink-0 mr-1.5 h-4 w-4 text-gray-400" />
                     <span>{post.readTime} read</span>
                   </div>

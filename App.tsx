@@ -136,6 +136,7 @@ const MOCK_USER: UserProfile = {
   email: 'demo@accountable.com',
   tier: SubscriptionTier.BASIC,
   calls_remaining: 12,
+  calls_enabled: true,
   is_admin: true, 
   created_at: new Date().toISOString()
 };
@@ -304,6 +305,7 @@ export default function App() {
           email: sessionUser.email || '',
           tier: SubscriptionTier.NONE,
           calls_remaining: 0,
+          calls_enabled: false,
           is_admin: false,
           created_at: new Date().toISOString()
         });

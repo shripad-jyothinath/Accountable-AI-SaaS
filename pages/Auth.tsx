@@ -33,6 +33,16 @@ export default function Auth({ onMockLogin, onAdminLogin }: AuthProps) {
     }
   };
 
+  const handlePostAuthRedirect = () => {
+    const redirectPath = localStorage.getItem('redirect_after_login');
+    if (redirectPath) {
+      localStorage.removeItem('redirect_after_login');
+      navigate(redirectPath);
+    } else {
+      navigate('/dashboard');
+    }
+  };
+
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -42,7 +52,7 @@ export default function Auth({ onMockLogin, onAdminLogin }: AuthProps) {
     if (!isSupabaseConfigured) {
       setTimeout(() => {
         onMockLogin(email);
-        navigate('/dashboard');
+        handlePostAuthRedirect();
         setLoading(false);
       }, 1000);
       return;
@@ -69,7 +79,7 @@ export default function Auth({ onMockLogin, onAdminLogin }: AuthProps) {
       // If sign up, we might wait for email confirmation in a real app
       // Here we assume auto-confirm or immediate login
       if (!error) {
-        navigate('/dashboard');
+        handlePostAuthRedirect();
       }
     } catch (err: any) {
       setError(err.message);
@@ -96,23 +106,36 @@ export default function Auth({ onMockLogin, onAdminLogin }: AuthProps) {
     }
 
     try {
-      // Verify credentials by calling the edge function
-      const { data, error } = await supabase.functions.invoke('get-admin-stats', {
-        body: { username: adminUser, password: adminPass }
+      // 1. Authenticate with Supabase Auth
+      // Assumption: Admin is just a user with a special flag
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: adminUser,
+        password: adminPass,
       });
 
-      if (error) {
-         // Often invoke returns error object if status != 200
-         throw new Error("Invalid Admin Credentials"); 
-      }
+      if (error) throw new Error("Invalid Login Credentials");
       
-      // If we got data back, credentials are valid
-      onAdminLogin({ username: adminUser, password: adminPass });
-      navigate('/admin');
+      if (data.user) {
+        // 2. Check Profile for is_admin flag
+        const { data: profile, error: profileError } = await supabase
+          .from('profiles')
+          .select('is_admin')
+          .eq('id', data.user.id)
+          .single();
+
+        if (profileError || !profile?.is_admin) {
+           await supabase.auth.signOut();
+           throw new Error("Access Denied: Not an Administrator");
+        }
+
+        // Success
+        onAdminLogin({ username: adminUser });
+        navigate('/admin');
+      }
 
     } catch (err: any) {
       console.error(err);
-      setError("Unauthorized: Invalid Admin Credentials");
+      setError(err.message || "Unauthorized");
     } finally {
       setLoading(false);
     }
@@ -161,27 +184,27 @@ export default function Auth({ onMockLogin, onAdminLogin }: AuthProps) {
           <form className="mt-8 space-y-6" onSubmit={handleAdminAuth}>
             <div className="rounded-md shadow-sm -space-y-px">
               <div>
-                <label htmlFor="admin-user" className="sr-only">Admin Username</label>
+                <label htmlFor="admin-user" className="sr-only">Admin Email</label>
                 <input
                   id="admin-user"
                   name="admin-user"
-                  type="text"
+                  type="email"
                   required
                   className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 placeholder-gray-500 dark:placeholder-gray-400 text-gray-900 dark:text-white dark:bg-gray-700 rounded-t-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
-                  placeholder="Admin Username"
+                  placeholder="Admin Email"
                   value={adminUser}
                   onChange={(e) => setAdminUser(e.target.value)}
                 />
               </div>
               <div>
-                <label htmlFor="admin-pass" className="sr-only">Admin Password</label>
+                <label htmlFor="admin-pass" className="sr-only">Password</label>
                 <input
                   id="admin-pass"
                   name="admin-pass"
                   type="password"
                   required
                   className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 placeholder-gray-500 dark:placeholder-gray-400 text-gray-900 dark:text-white dark:bg-gray-700 rounded-b-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
-                  placeholder="Secret Key"
+                  placeholder="Password"
                   value={adminPass}
                   onChange={(e) => setAdminPass(e.target.value)}
                 />

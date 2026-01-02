@@ -1,17 +1,54 @@
+-- ==============================================================================
 -- 1. Create Profiles Table (Public metadata for users)
-create table public.profiles (
+-- ==============================================================================
+create table if not exists public.profiles (
   id uuid references auth.users not null primary key,
   email text,
   full_name text,
   whatsapp_number text,
   tier text default 'NONE', -- 'NONE', 'BASIC', 'PRO'
   calls_remaining integer default 0,
+  calls_enabled boolean default true,
   is_admin boolean default false,
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
--- 2. Enable Row Level Security (RLS) for Profiles
+-- SAFETY: Ensure columns exist if table was created previously without them
+DO $$
+BEGIN
+    ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS whatsapp_number text;
+    ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS calls_enabled boolean DEFAULT true;
+    ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS is_admin boolean DEFAULT false;
+    ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS tier text DEFAULT 'NONE';
+    ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS calls_remaining integer DEFAULT 0;
+EXCEPTION
+    WHEN duplicate_column THEN RAISE NOTICE 'column exists';
+END $$;
+
+-- ==============================================================================
+-- 2. Helper Function to prevent Infinite Recursion in Policies
+-- CRITICAL FIX: We drop with CASCADE to ensure old recursive dependencies are gone.
+-- This runs with elevated privileges (security definer) to bypass RLS loops.
+-- ==============================================================================
+drop function if exists public.check_is_admin() cascade;
+
+create or replace function public.check_is_admin()
+returns boolean as $$
+  select exists (
+    select 1 from public.profiles
+    where id = auth.uid() and is_admin = true
+  );
+$$ language sql security definer;
+
+-- ==============================================================================
+-- 3. Enable Row Level Security (RLS) for Profiles
+-- ==============================================================================
 alter table public.profiles enable row level security;
+
+-- Drop existing policies explicitly to ensure clean state
+drop policy if exists "Users can view own profile" on public.profiles;
+drop policy if exists "Users can update own profile" on public.profiles;
+drop policy if exists "Admins can view all profiles" on public.profiles;
 
 create policy "Users can view own profile"
   on public.profiles for select
@@ -21,13 +58,15 @@ create policy "Users can update own profile"
   on public.profiles for update
   using ( auth.uid() = id );
 
--- POLICY: Allow Admins to view all profiles
+-- POLICY: Allow Admins to view all profiles (Uses helper function to avoid loop)
 create policy "Admins can view all profiles"
   on public.profiles for select
-  using ( (select is_admin from public.profiles where id = auth.uid()) = true );
+  using ( public.check_is_admin() );
 
--- 3. Create Tasks Table
-create table public.tasks (
+-- ==============================================================================
+-- 4. Create Tasks Table
+-- ==============================================================================
+create table if not exists public.tasks (
   id uuid default gen_random_uuid() primary key,
   user_id uuid references public.profiles(id) on delete cascade not null,
   title text not null,
@@ -39,28 +78,42 @@ create table public.tasks (
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
--- 4. Enable RLS for Tasks
+-- SAFETY: Add Constraint for Status (Idempotent)
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'tasks_status_check') THEN
+    ALTER TABLE public.tasks ADD CONSTRAINT tasks_status_check CHECK (status IN ('pending', 'verified', 'missed'));
+  END IF;
+END $$;
+
+-- ==============================================================================
+-- 5. Enable RLS for Tasks
+-- ==============================================================================
 alter table public.tasks enable row level security;
+
+drop policy if exists "Users can CRUD own tasks" on public.tasks;
+drop policy if exists "Admins can view all tasks" on public.tasks;
+drop policy if exists "Admins can update all tasks" on public.tasks;
 
 create policy "Users can CRUD own tasks"
   on public.tasks for all
   using ( auth.uid() = user_id );
 
--- POLICY: Allow Admins to view ALL tasks
 create policy "Admins can view all tasks"
   on public.tasks for select
-  using ( (select is_admin from public.profiles where id = auth.uid()) = true );
+  using ( public.check_is_admin() );
 
--- POLICY: Allow Admins to update ALL tasks (for verification)
 create policy "Admins can update all tasks"
   on public.tasks for update
-  using ( (select is_admin from public.profiles where id = auth.uid()) = true );
+  using ( public.check_is_admin() );
 
--- 5. Create Trigger to auto-create profile on Sign Up
+-- ==============================================================================
+-- 6. Create Trigger to auto-create profile on Sign Up
+-- ==============================================================================
 create or replace function public.handle_new_user()
 returns trigger as $$
 begin
-  insert into public.profiles (id, email, full_name, whatsapp_number, tier, calls_remaining, is_admin)
+  insert into public.profiles (id, email, full_name, whatsapp_number, tier, calls_remaining, is_admin, calls_enabled)
   values (
     new.id,
     new.email,
@@ -68,18 +121,24 @@ begin
     new.raw_user_meta_data->>'whatsapp_number',
     'NONE',
     0,
-    false
-  );
+    false,
+    true
+  )
+  ON CONFLICT (id) DO NOTHING;
   return new;
 end;
 $$ language plpgsql security definer;
 
+-- Trigger setup (Safe to re-run)
+drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure public.handle_new_user();
 
--- 6. ADMIN VIEW (The "Task Table" request)
--- Run this to create the joined view for the dashboard
+-- ==============================================================================
+-- 7. ADMIN VIEW
+-- ==============================================================================
+drop view if exists public.admin_task_overview;
 create or replace view public.admin_task_overview as
 select
   t.id as task_id,
@@ -93,3 +152,26 @@ select
   p.whatsapp_number
 from public.tasks t
 join public.profiles p on t.user_id = p.id;
+
+-- ==============================================================================
+-- 8. CALL DEDUCTION TRIGGER
+-- Automatically deduct 1 call when task becomes 'verified'
+-- ==============================================================================
+create or replace function public.deduct_call_on_verify()
+returns trigger as $$
+begin
+  -- If status changed to 'verified' from something else
+  if new.status = 'verified' and old.status != 'verified' then
+    update public.profiles
+    set calls_remaining = calls_remaining - 1
+    where id = new.user_id;
+  end if;
+  return new;
+end;
+$$ language plpgsql security definer;
+
+drop trigger if exists on_task_verified on public.tasks;
+create trigger on_task_verified
+  after update on public.tasks
+  for each row
+  execute procedure public.deduct_call_on_verify();

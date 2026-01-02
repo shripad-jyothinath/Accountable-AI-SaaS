@@ -48,7 +48,7 @@ export default function Admin({ credentials }: { credentials?: any }) {
   const [stats, setStats] = useState({
     totalUsers: 0,
     mrr: 0,
-    conversionRate: 0,
+    conversionRate: 4, // Mocked for now as we need historical data
     recentSignups: [] as any[]
   });
   
@@ -56,29 +56,38 @@ export default function Admin({ credentials }: { credentials?: any }) {
   const [loading, setLoading] = useState(true);
   const [lastRefreshed, setLastRefreshed] = useState<Date>(new Date());
 
-  // Helper to construct body with credentials if they exist
-  const getAuthBody = (extras: any = {}) => {
-    return {
-      ...(credentials ? { username: credentials.username, password: credentials.password } : {}),
-      ...extras
-    };
-  };
-
-  // 1. Fetch Stats
+  // 1. Fetch Stats directly from Profiles table
   useEffect(() => {
     async function fetchStats() {
       if (isSupabaseConfigured && supabase) {
         try {
-          const { data, error } = await supabase.functions.invoke('get-admin-stats', {
-            body: getAuthBody({ action: 'stats' })
-          });
+          // Fetch all profiles to calculate stats
+          // Note: In a huge app, use count() instead, but for this scale fetching is fine
+          const { data: profiles, error } = await supabase
+            .from('profiles')
+            .select('id, tier, created_at');
           
-          if (data && !error) {
-            setStats(data);
+          if (profiles && !error) {
+            const totalUsers = profiles.length;
+            
+            // Calculate MRR
+            const mrr = profiles.reduce((acc, user) => {
+              if (user.tier === 'BASIC') return acc + 20;
+              if (user.tier === 'PRO') return acc + 40;
+              return acc;
+            }, 0);
+
+            setStats(prev => ({
+              ...prev,
+              totalUsers,
+              mrr,
+            }));
           } else {
+            console.error("Error fetching stats:", error);
             setMockData();
           }
         } catch (e) {
+          console.error(e);
           setMockData();
         }
       } else {
@@ -89,7 +98,7 @@ export default function Admin({ credentials }: { credentials?: any }) {
     fetchStats();
   }, [credentials]);
 
-  // 2. Fetch Tasks Polling
+  // 2. Fetch Tasks Polling directly from View
   useEffect(() => {
     fetchLiveTasks(); // Initial fetch
     const intervalId = setInterval(fetchLiveTasks, 5000);
@@ -99,9 +108,11 @@ export default function Admin({ credentials }: { credentials?: any }) {
   const fetchLiveTasks = async () => {
     if (isSupabaseConfigured && supabase) {
       try {
-        const { data, error } = await supabase.functions.invoke('get-admin-stats', {
-          body: getAuthBody({ action: 'tasks' })
-        });
+        const { data, error } = await supabase
+          .from('admin_task_overview')
+          .select('*')
+          .order('scheduled_at', { ascending: false })
+          .limit(50); // Limit to recent 50 for performance
 
         if (data && !error) {
           setAdminTasks(data as AdminTaskView[]);
@@ -118,12 +129,13 @@ export default function Admin({ credentials }: { credentials?: any }) {
       // Optimistic Update
       setAdminTasks(prev => prev.map(t => t.task_id === taskId ? { ...t, status: 'verified' } : t));
       
-      const { error } = await supabase.functions.invoke('get-admin-stats', {
-        body: getAuthBody({ action: 'verify_task', taskId })
-      });
+      const { error } = await supabase
+        .from('tasks')
+        .update({ status: 'verified' })
+        .eq('id', taskId);
         
       if (error) {
-        alert("Failed to verify task. Check console.");
+        alert("Failed to verify task: " + error.message);
         console.error(error);
         fetchLiveTasks(); // Revert on error
       }

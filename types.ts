@@ -11,6 +11,7 @@ export interface UserProfile {
   whatsapp_number?: string;
   tier: SubscriptionTier;
   calls_remaining: number;
+  calls_enabled: boolean;
   is_admin: boolean;
   created_at: string;
 }

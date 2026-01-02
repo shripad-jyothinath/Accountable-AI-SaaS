@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { UserProfile, Task } from '../types';
-import { Plus, PhoneCall, CheckCircle, Clock, Calendar, X, CreditCard, Lock, Loader2, AlertTriangle, Upload, Bell, Menu, Settings, LogOut, LayoutDashboard, DollarSign, User, ShieldCheck } from 'lucide-react';
+import { Plus, PhoneCall, CheckCircle, Clock, Calendar, X, CreditCard, Lock, Loader2, AlertTriangle, Upload, Bell, Menu, Settings, LogOut, LayoutDashboard, DollarSign, User, ShieldCheck, Phone, PhoneOff, ArrowLeft } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '../supabaseClient';
 import { Link, useNavigate } from '../App';
 
@@ -23,6 +23,7 @@ export default function Dashboard({ user, refreshUser, onLogout }: DashboardProp
   // UI States
   const [isSidebarOpen, setSidebarOpen] = useState(false);
   const [activeView, setActiveView] = useState<'tasks' | 'settings'>('tasks');
+  const [daysRemaining, setDaysRemaining] = useState<number>(30);
   
   // Modal States
   const [showTaskModal, setShowTaskModal] = useState(false);
@@ -43,9 +44,23 @@ export default function Dashboard({ user, refreshUser, onLogout }: DashboardProp
   const [loadingTasks, setLoadingTasks] = useState(false);
   const [processingPayment, setProcessingPayment] = useState(false);
   const [schedulingTask, setSchedulingTask] = useState(false);
+  const [togglingCalls, setTogglingCalls] = useState(false);
 
   // Notification Tracking
   const notifiedTasksRef = useRef<Set<string>>(new Set());
+
+  // Calculate Plan Days Remaining (Mock based on Created At)
+  useEffect(() => {
+    if (user.created_at) {
+      const start = new Date(user.created_at).getTime();
+      const now = new Date().getTime();
+      const thirtyDays = 30 * 24 * 60 * 60 * 1000;
+      const end = start + thirtyDays;
+      const diff = end - now;
+      const days = Math.ceil(diff / (1000 * 60 * 60 * 24));
+      setDaysRemaining(days > 0 ? days : 0);
+    }
+  }, [user.created_at]);
 
   // 1. Request Notification Permissions on Mount
   useEffect(() => {
@@ -123,6 +138,8 @@ export default function Dashboard({ user, refreshUser, onLogout }: DashboardProp
     // Poll for status updates every 5 seconds
     const pollInterval = setInterval(() => {
       fetchTasks(true); // true = background refresh (no loading spinner)
+      // Also refresh user data to keep "calls remaining" in sync
+      refreshUser(); 
     }, 5000);
 
     return () => clearInterval(pollInterval);
@@ -147,51 +164,96 @@ export default function Dashboard({ user, refreshUser, onLogout }: DashboardProp
     }
   };
 
+  const handleToggleCalls = async () => {
+    if (user.calls_remaining <= 0) {
+      alert("You have no calls remaining. Please Top Up to enable calls.");
+      return;
+    }
+
+    setTogglingCalls(true);
+    const newValue = !user.calls_enabled;
+    
+    if (isSupabaseConfigured && supabase) {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ calls_enabled: newValue })
+        .eq('id', user.id);
+        
+      if (error) {
+        // Fallback or alert
+        console.error(error);
+        alert(`Failed to update status: ${error.message}`);
+      } 
+      await refreshUser();
+    } else {
+      // Mock toggle
+      alert("Call status updated (Mock)");
+    }
+    setTogglingCalls(false);
+  };
+
   const handleAddTask = async (e: React.FormEvent) => {
     e.preventDefault();
     if (schedulingTask) return;
+    if (!newTaskTime) {
+      alert("Please select a start time.");
+      return;
+    }
+
     setSchedulingTask(true);
     
-    // Calculate End Time
-    const start = new Date(newTaskTime);
-    const end = new Date(start.getTime() + newTaskDuration * 60000);
-    const endIso = end.toISOString();
+    try {
+      // Calculate End Time correctly to ISO String
+      const start = new Date(newTaskTime);
+      const end = new Date(start.getTime() + newTaskDuration * 60000);
+      
+      const startIso = start.toISOString();
+      const endIso = end.toISOString();
 
-    if (isSupabaseConfigured && supabase) {
-      const { data, error } = await supabase.from('tasks').insert([
-        {
+      if (isSupabaseConfigured && supabase) {
+        const { data, error } = await supabase.from('tasks').insert([
+          {
+            user_id: user.id,
+            title: newTaskTitle,
+            description: newTaskDesc,
+            scheduled_at: startIso,
+            end_at: endIso,
+            status: 'pending'
+          }
+        ]).select();
+
+        if (error) {
+          console.error("Task creation error object:", error);
+          // Try to extract a readable message
+          const msg = error.message || error.details || JSON.stringify(error);
+          alert(`Error creating task: ${msg}`);
+        } else if (data) {
+          setTasks([data[0] as Task, ...tasks]);
+          setShowTaskModal(false);
+          resetForm();
+          fetchTasks(); // Force refresh
+        }
+      } else {
+        // Fallback for mock mode
+        const task: Task = {
+          id: Math.random().toString(36).substr(2, 9),
           user_id: user.id,
           title: newTaskTitle,
           description: newTaskDesc,
-          scheduled_at: newTaskTime,
+          scheduled_at: startIso,
           end_at: endIso,
           status: 'pending'
-        }
-      ]).select();
-
-      if (data) {
-        setTasks([data[0] as Task, ...tasks]);
+        };
+        setTasks([task, ...tasks]);
         setShowTaskModal(false);
         resetForm();
-      } else if (error) {
-        alert("Error creating task: " + error.message);
       }
-    } else {
-      // Fallback for mock mode
-      const task: Task = {
-        id: Math.random().toString(36).substr(2, 9),
-        user_id: user.id,
-        title: newTaskTitle,
-        description: newTaskDesc,
-        scheduled_at: newTaskTime,
-        end_at: endIso,
-        status: 'pending'
-      };
-      setTasks([task, ...tasks]);
-      setShowTaskModal(false);
-      resetForm();
+    } catch (e: any) {
+      console.error("Unexpected error in handleAddTask:", e);
+      alert("Unexpected error: " + (e.message || String(e)));
+    } finally {
+      setSchedulingTask(false);
     }
-    setSchedulingTask(false);
   };
 
   const handleTopUp = async (e: React.FormEvent) => {
@@ -201,12 +263,12 @@ export default function Dashboard({ user, refreshUser, onLogout }: DashboardProp
     // Simulate DB update
     setTimeout(async () => {
       if (isSupabaseConfigured && supabase) {
-         // Add 10 calls
-         const newCalls = (user.calls_remaining || 0) + 10;
+         // Cumulative Add
+         const { data: current } = await supabase.from('profiles').select('calls_remaining').eq('id', user.id).single();
+         const newCalls = (current?.calls_remaining || 0) + 10;
          await supabase.from('profiles').update({ calls_remaining: newCalls }).eq('id', user.id);
          await refreshUser();
       } else {
-         // Mock update locally? We can't update read-only prop user easily, but in mock mode refreshUser might not work perfectly unless App state handles it.
          alert("Top Up Successful! (Mock)");
       }
       
@@ -230,13 +292,9 @@ export default function Dashboard({ user, refreshUser, onLogout }: DashboardProp
       } else {
         await refreshUser();
         alert("Profile updated successfully!");
-        setSidebarOpen(false);
-        setActiveView('tasks');
       }
     } else {
        alert("Profile updated (Mock)");
-       setSidebarOpen(false);
-       setActiveView('tasks');
     }
     setSavingSettings(false);
   }
@@ -273,243 +331,267 @@ export default function Dashboard({ user, refreshUser, onLogout }: DashboardProp
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex">
       
-      {/* Custom Dashboard Header */}
-      <header className="bg-white dark:bg-gray-800 shadow-sm sticky top-0 z-30">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      {/* Sidebar Navigation (Drawer) */}
+      <div className={`fixed inset-y-0 left-0 z-50 w-64 bg-white dark:bg-gray-800 transform transition-transform duration-300 ease-in-out shadow-2xl ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        <div className="flex items-center justify-between h-16 px-6 border-b border-gray-100 dark:border-gray-700">
            <div className="flex items-center">
-              <button onClick={() => setSidebarOpen(true)} className="p-2 rounded-md text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 focus:outline-none lg:hidden">
-                 <Menu className="w-6 h-6" />
-              </button>
-              <div className="ml-4 lg:ml-0 flex items-center">
-                <ShieldCheck className="w-8 h-8 text-indigo-600 dark:text-indigo-400" />
-                <h1 className="ml-3 text-xl font-bold text-gray-900 dark:text-white">Dashboard</h1>
+              <ShieldCheck className="h-8 w-8 text-indigo-600 dark:text-indigo-400" />
+              <span className="ml-2 text-xl font-bold text-gray-900 dark:text-white">Accountable</span>
+           </div>
+           <button onClick={() => setSidebarOpen(false)} className="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white">
+             <X className="w-6 h-6" />
+           </button>
+        </div>
+        <div className="px-2 py-4 space-y-1">
+           <button 
+              onClick={() => { setActiveView('tasks'); setSidebarOpen(false); }}
+              className={`flex items-center w-full px-4 py-3 text-left rounded-md transition-colors ${activeView === 'tasks' ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-900/20 dark:text-indigo-300' : 'text-gray-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-700'}`}
+           >
+              <LayoutDashboard className="w-5 h-5 mr-3" />
+              Tasks
+           </button>
+           <button 
+              onClick={() => { setActiveView('settings'); setSidebarOpen(false); }}
+              className={`flex items-center w-full px-4 py-3 text-left rounded-md transition-colors ${activeView === 'settings' ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-900/20 dark:text-indigo-300' : 'text-gray-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-700'}`}
+           >
+              <Settings className="w-5 h-5 mr-3" />
+              Settings
+           </button>
+           <Link 
+              to="/pricing" 
+              onClick={() => setSidebarOpen(false)}
+              className="flex items-center w-full px-4 py-3 text-left rounded-md text-gray-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-700 transition-colors"
+           >
+              <DollarSign className="w-5 h-5 mr-3" />
+              Pricing & Plans
+           </Link>
+        </div>
+        <div className="absolute bottom-0 w-full p-4 border-t border-gray-100 dark:border-gray-700">
+           <div className="flex items-center mb-4">
+              <User className="w-8 h-8 p-1.5 bg-gray-100 dark:bg-gray-700 rounded-full text-gray-600 dark:text-gray-300" />
+              <div className="ml-3">
+                 <p className="text-sm font-medium text-gray-900 dark:text-white">{user.full_name || 'User'}</p>
+                 <p className="text-xs text-gray-500 dark:text-gray-400 truncate w-32">{user.email}</p>
               </div>
            </div>
-           
-           {/* Desktop Navigation / User Info */}
-           <div className="hidden lg:flex items-center space-x-4">
-               <button onClick={() => setActiveView('tasks')} className={`text-sm font-medium ${activeView === 'tasks' ? 'text-indigo-600' : 'text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white'}`}>
-                 Tasks
-               </button>
-               <button onClick={() => { setSidebarOpen(true); setActiveView('settings'); }} className={`text-sm font-medium ${activeView === 'settings' ? 'text-indigo-600' : 'text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white'}`}>
-                 Settings
-               </button>
-               <div className="h-6 w-px bg-gray-200 dark:bg-gray-700"></div>
-               <span className="text-sm font-bold text-gray-900 dark:text-white">{user.calls_remaining} Calls</span>
-               <button 
-                  onClick={() => setShowPaymentModal(true)}
-                  className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-md text-sm font-medium transition-colors"
-               >
-                 Top Up
-               </button>
-               <div className="relative group ml-3">
-                 <button className="flex items-center text-sm text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white">
-                   <User className="w-5 h-5" />
-                 </button>
-                 {/* Simple Dropdown for Logout */}
-                 <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-md shadow-lg py-1 hidden group-hover:block border border-gray-100 dark:border-gray-700">
-                    <button onClick={onLogout} className="block w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700">
-                      Sign out
-                    </button>
-                 </div>
-               </div>
-           </div>
-           
-           {/* Mobile Top Up */}
-           <div className="flex lg:hidden items-center">
-              <span className="mr-3 text-sm font-bold text-gray-900 dark:text-white">{user.calls_remaining}</span>
-              <button 
-                  onClick={() => setShowPaymentModal(true)}
-                  className="bg-indigo-600 hover:bg-indigo-700 text-white p-1.5 rounded-full"
-               >
-                 <Plus className="w-5 h-5" />
-               </button>
-           </div>
+           <button 
+              onClick={onLogout}
+              className="flex items-center w-full px-4 py-2 text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/10 rounded-md transition-colors"
+           >
+              <LogOut className="w-4 h-4 mr-2" />
+              Sign Out
+           </button>
         </div>
-      </header>
+      </div>
 
-      {/* Sidebar / Slide-over */}
-      {isSidebarOpen && (
-        <div className="fixed inset-0 z-40 flex">
-          <div className="fixed inset-0 bg-gray-600 bg-opacity-75 transition-opacity" onClick={() => setSidebarOpen(false)}></div>
-          <div className="relative flex-1 flex flex-col max-w-xs w-full bg-white dark:bg-gray-800 shadow-xl">
-             <div className="absolute top-0 right-0 -mr-12 pt-2">
-               <button onClick={() => setSidebarOpen(false)} className="ml-1 flex items-center justify-center h-10 w-10 rounded-full focus:outline-none focus:ring-2 focus:ring-inset focus:ring-white">
-                 <X className="h-6 w-6 text-white" />
-               </button>
+      {/* Overlay for Sidebar */}
+      {isSidebarOpen && <div className="fixed inset-0 bg-black/50 z-40" onClick={() => setSidebarOpen(false)}></div>}
+
+      <div className="flex-1 flex flex-col min-w-0">
+        {/* Custom Dashboard Header */}
+        <header className="bg-white dark:bg-gray-800 shadow-sm sticky top-0 z-30">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+             <div className="flex items-center">
+                <button onClick={() => setSidebarOpen(true)} className="p-2 -ml-2 rounded-md text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700 focus:outline-none">
+                   <Menu className="w-6 h-6" />
+                </button>
+                <h1 className="ml-4 text-xl font-bold text-gray-900 dark:text-white">Dashboard</h1>
              </div>
              
-             <div className="flex-1 h-0 pt-5 pb-4 overflow-y-auto">
-                <div className="flex-shrink-0 flex items-center px-4 mb-8">
-                  <ShieldCheck className="h-8 w-8 text-indigo-600 dark:text-indigo-400" />
-                  <span className="ml-2 text-xl font-bold text-gray-900 dark:text-white">Accountable</span>
-                </div>
-                <nav className="mt-5 px-2 space-y-1">
-                  <button 
-                    onClick={() => { setActiveView('tasks'); setSidebarOpen(false); }}
-                    className={`group flex items-center px-2 py-2 text-base font-medium rounded-md w-full ${activeView === 'tasks' ? 'bg-indigo-100 text-indigo-900 dark:bg-indigo-900/50 dark:text-indigo-200' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-white'}`}
-                  >
-                    <LayoutDashboard className="mr-4 h-6 w-6 text-gray-400 group-hover:text-gray-500 dark:text-gray-400 dark:group-hover:text-gray-300" />
-                    Tasks
-                  </button>
-                  <button 
-                    onClick={() => { setActiveView('settings'); }} 
-                    className={`group flex items-center px-2 py-2 text-base font-medium rounded-md w-full ${activeView === 'settings' ? 'bg-indigo-100 text-indigo-900 dark:bg-indigo-900/50 dark:text-indigo-200' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-white'}`}
-                  >
-                    <Settings className="mr-4 h-6 w-6 text-gray-400 group-hover:text-gray-500 dark:text-gray-400 dark:group-hover:text-gray-300" />
-                    Settings
-                  </button>
-                  <Link 
-                    to="/pricing"
-                    onClick={() => setSidebarOpen(false)}
-                    className="group flex items-center px-2 py-2 text-base font-medium rounded-md w-full text-gray-600 hover:bg-gray-50 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-white"
-                  >
-                    <DollarSign className="mr-4 h-6 w-6 text-gray-400 group-hover:text-gray-500 dark:text-gray-400 dark:group-hover:text-gray-300" />
-                    Pricing & Plans
-                  </Link>
-                </nav>
-             </div>
-             <div className="flex-shrink-0 flex border-t border-gray-200 dark:border-gray-700 p-4">
-                <div className="flex items-center w-full">
-                  <div className="ml-3">
-                    <p className="text-sm font-medium text-gray-700 dark:text-gray-200 group-hover:text-gray-900">{user.email}</p>
-                    <button onClick={onLogout} className="text-xs font-medium text-gray-500 dark:text-gray-400 group-hover:text-gray-700 flex items-center mt-1">
-                      <LogOut className="w-3 h-3 mr-1" /> Sign Out
-                    </button>
-                  </div>
-                </div>
-             </div>
-          </div>
-        </div>
-      )}
+             <div className="flex items-center space-x-2 md:space-x-4">
+                 {/* Enable Calls Toggle */}
+                 <button
+                    onClick={handleToggleCalls}
+                    disabled={togglingCalls}
+                    className={`flex items-center px-3 py-1.5 rounded-full text-xs md:text-sm font-medium transition-colors border ${
+                      user.calls_enabled 
+                      ? 'bg-green-50 border-green-200 text-green-700 dark:bg-green-900/20 dark:border-green-800 dark:text-green-400' 
+                      : 'bg-gray-50 border-gray-200 text-gray-600 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300'
+                    }`}
+                 >
+                   {togglingCalls ? (
+                     <Loader2 className="w-4 h-4 animate-spin md:mr-2" />
+                   ) : (
+                     user.calls_enabled ? <Phone className="w-4 h-4 md:mr-2" /> : <PhoneOff className="w-4 h-4 md:mr-2" />
+                   )}
+                   <span className="hidden md:inline">{user.calls_enabled ? "Calls Enabled" : "Calls Disabled"}</span>
+                 </button>
 
-      {/* Main Content Area */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        
-        {activeView === 'settings' ? (
-          <div className="bg-white dark:bg-gray-800 shadow rounded-lg p-6 max-w-2xl mx-auto">
-             <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-6">Account Settings</h2>
-             <form onSubmit={handleSaveSettings} className="space-y-6">
-                <div>
-                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Full Name</label>
-                   <input 
-                     type="text" 
-                     value={settingsName} 
-                     onChange={(e) => setSettingsName(e.target.value)}
-                     className="mt-1 block w-full border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-2 px-3 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                   />
-                </div>
-                <div>
-                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">WhatsApp Number</label>
-                   <input 
-                     type="text" 
-                     value={settingsWhatsapp} 
-                     onChange={(e) => setSettingsWhatsapp(e.target.value)}
-                     className="mt-1 block w-full border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-2 px-3 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                   />
-                   <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">Used for verification calls.</p>
-                </div>
-                <div>
-                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Current Plan</label>
-                   <div className="mt-1 block w-full py-2 px-3 text-gray-500 dark:text-gray-400">
-                      {user.tier === 'NONE' ? 'Free / None' : user.tier}
-                   </div>
-                </div>
-                <div className="flex justify-end">
-                   <button 
-                     type="submit" 
-                     disabled={savingSettings}
-                     className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md font-medium text-sm flex items-center"
-                   >
-                     {savingSettings && <Loader2 className="animate-spin -ml-1 mr-2 h-4 w-4" />}
-                     Save Changes
-                   </button>
-                </div>
-             </form>
+                 <div className="hidden md:block h-6 w-px bg-gray-200 dark:bg-gray-700"></div>
+
+                 {/* Plan Info */}
+                 <div className="text-right">
+                    <p className="text-sm font-bold text-gray-900 dark:text-white">{user.calls_remaining} Calls</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">Plan ends in {daysRemaining} days</p>
+                 </div>
+
+                 <button 
+                    onClick={() => setShowPaymentModal(true)}
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white p-2 rounded-full md:px-4 md:py-1.5 md:rounded-md text-sm font-medium transition-colors shadow-sm"
+                 >
+                   <span className="hidden md:inline">Top Up</span>
+                   <Plus className="w-4 h-4 md:hidden" />
+                 </button>
+             </div>
           </div>
-        ) : (
-          <>
-            <div className="flex justify-between items-center mb-6">
-               <h2 className="text-lg font-medium text-gray-900 dark:text-white">Your Schedule</h2>
-               <button
-                  onClick={() => setShowTaskModal(true)}
-                  className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none"
-                >
-                  <Plus className="-ml-1 mr-2 h-5 w-5" />
-                  Schedule Task
-               </button>
-            </div>
+        </header>
+
+        {/* Main Content Area */}
+        <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full">
           
-            {/* Permission Reminder Banner */}
-            {'Notification' in window && Notification.permission === 'default' && (
-              <div className="mb-6 bg-indigo-50 dark:bg-indigo-900/20 border-l-4 border-indigo-500 p-4">
-                <div className="flex">
-                  <div className="flex-shrink-0">
-                    <Bell className="h-5 w-5 text-indigo-400" />
+          {activeView === 'settings' ? (
+            <div className="max-w-2xl mx-auto">
+               <button onClick={() => setActiveView('tasks')} className="flex items-center text-sm text-gray-500 hover:text-gray-900 dark:hover:text-white mb-4">
+                  <ArrowLeft className="w-4 h-4 mr-1" /> Back to Tasks
+               </button>
+               <div className="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
+                 <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-6">Contact & Settings</h2>
+                 <form onSubmit={handleSaveSettings} className="space-y-6">
+                    <div>
+                       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Full Name</label>
+                       <input 
+                         type="text" 
+                         value={settingsName} 
+                         onChange={(e) => setSettingsName(e.target.value)}
+                         className="mt-1 block w-full border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-2 px-3 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                       />
+                    </div>
+                    <div>
+                       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">WhatsApp Number</label>
+                       <input 
+                         type="text" 
+                         value={settingsWhatsapp} 
+                         onChange={(e) => setSettingsWhatsapp(e.target.value)}
+                         className="mt-1 block w-full border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-2 px-3 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                       />
+                       <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">Used for verification calls.</p>
+                    </div>
+                    <div>
+                       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Current Plan</label>
+                       <div className="mt-1 block w-full py-2 px-3 text-gray-500 dark:text-gray-400 border border-transparent">
+                          <span className="font-semibold">{user.tier === 'NONE' ? 'Free / None' : user.tier} Plan</span>
+                          <span className="mx-2">•</span>
+                          <span>{user.calls_remaining} calls left</span>
+                       </div>
+                    </div>
+                    <div className="flex justify-end pt-4 border-t border-gray-100 dark:border-gray-700">
+                       <button 
+                         type="submit" 
+                         disabled={savingSettings}
+                         className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md font-medium text-sm flex items-center shadow-sm"
+                       >
+                         {savingSettings && <Loader2 className="animate-spin -ml-1 mr-2 h-4 w-4" />}
+                         Save Changes
+                       </button>
+                    </div>
+                 </form>
+               </div>
+            </div>
+          ) : (
+            <>
+              {/* Task Header */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-4">
+                 <div>
+                    <h2 className="text-lg font-medium text-gray-900 dark:text-white">Your Schedule</h2>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">Manage your verified tasks.</p>
+                 </div>
+                 <button
+                    onClick={() => setShowTaskModal(true)}
+                    className="inline-flex items-center justify-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none"
+                  >
+                    <Plus className="-ml-1 mr-2 h-5 w-5" />
+                    Schedule Task
+                 </button>
+              </div>
+            
+              {/* Permission Reminder Banner */}
+              {'Notification' in window && Notification.permission === 'default' && (
+                <div className="mb-6 bg-indigo-50 dark:bg-indigo-900/20 border-l-4 border-indigo-500 p-4 rounded-r-md">
+                  <div className="flex">
+                    <div className="flex-shrink-0">
+                      <Bell className="h-5 w-5 text-indigo-400" />
+                    </div>
+                    <div className="ml-3">
+                      <p className="text-sm text-indigo-700 dark:text-indigo-300">
+                        Enable notifications to get reminded 15 minutes before your accountability call.
+                        <button 
+                          onClick={() => Notification.requestPermission()} 
+                          className="ml-2 font-bold underline hover:text-indigo-900 dark:hover:text-indigo-100"
+                        >
+                          Enable Now
+                        </button>
+                      </p>
+                    </div>
                   </div>
-                  <div className="ml-3">
-                    <p className="text-sm text-indigo-700 dark:text-indigo-300">
-                      Enable notifications to get reminded 15 minutes before your accountability call.
-                      <button 
-                        onClick={() => Notification.requestPermission()} 
-                        className="ml-2 font-bold underline hover:text-indigo-900 dark:hover:text-indigo-100"
-                      >
-                        Enable Now
-                      </button>
+                </div>
+              )}
+              
+              {!user.calls_enabled && user.calls_remaining > 0 && (
+                <div className="mb-6 bg-yellow-50 dark:bg-yellow-900/20 border-l-4 border-yellow-400 p-4 rounded-r-md">
+                  <div className="flex">
+                    <PhoneOff className="h-5 w-5 text-yellow-400 mr-3" />
+                    <p className="text-sm text-yellow-700 dark:text-yellow-200">
+                       <strong>Calls are disabled.</strong> Agents won't be able to call you. 
+                       <button onClick={handleToggleCalls} className="ml-2 underline font-bold">Enable Now</button>
                     </p>
                   </div>
                 </div>
-              </div>
-            )}
-
-            {/* Task List */}
-            <div className="bg-white dark:bg-gray-800 shadow overflow-hidden sm:rounded-md border border-gray-100 dark:border-gray-700">
-              <div className="px-4 py-5 sm:px-6 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
-                <h3 className="text-lg leading-6 font-medium text-gray-900 dark:text-white">Upcoming & Past Calls</h3>
-                {loadingTasks && <Loader2 className="w-4 h-4 animate-spin text-gray-400" />}
-              </div>
-              {loadingTasks && tasks.length === 0 ? (
-                <div className="p-8 text-center text-gray-500 dark:text-gray-400">Loading tasks...</div>
-              ) : (
-                <ul className="divide-y divide-gray-200 dark:divide-gray-700">
-                  {tasks.map((task) => (
-                    <li key={task.id}>
-                      <div className="px-4 py-4 sm:px-6 hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors">
-                        <div className="flex items-center justify-between">
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-indigo-600 dark:text-indigo-400 truncate">{task.title}</p>
-                            {task.description && <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{task.description}</p>}
-                          </div>
-                          <div className="ml-2 flex-shrink-0 flex">
-                            <p className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(task.status)}`}>
-                              {task.status}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="mt-2 sm:flex sm:justify-between">
-                          <div className="sm:flex">
-                            <p className="flex items-center text-sm text-gray-500 dark:text-gray-400">
-                              <Calendar className="flex-shrink-0 mr-1.5 h-5 w-5 text-gray-400 dark:text-gray-500" />
-                              {new Date(task.scheduled_at).toLocaleString()} 
-                              {task.end_at && ` - ${new Date(task.end_at).toLocaleTimeString()}`}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    </li>
-                  ))}
-                  {tasks.length === 0 && (
-                    <li className="px-4 py-10 text-center text-gray-500 dark:text-gray-400">
-                      No tasks scheduled. Add one to get started!
-                    </li>
-                  )}
-                </ul>
               )}
-            </div>
-          </>
-        )}
+
+              {/* Task List */}
+              <div className="bg-white dark:bg-gray-800 shadow rounded-lg border border-gray-100 dark:border-gray-700 overflow-hidden">
+                <div className="px-4 py-5 sm:px-6 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-800/50">
+                  <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Upcoming & Past Calls</h3>
+                  {loadingTasks && <Loader2 className="w-4 h-4 animate-spin text-gray-400" />}
+                </div>
+                {loadingTasks && tasks.length === 0 ? (
+                  <div className="p-8 text-center text-gray-500 dark:text-gray-400">Loading tasks...</div>
+                ) : (
+                  <ul className="divide-y divide-gray-200 dark:divide-gray-700">
+                    {tasks.map((task) => (
+                      <li key={task.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+                        <div className="px-4 py-4 sm:px-6">
+                          <div className="flex items-center justify-between">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-indigo-600 dark:text-indigo-400 truncate">{task.title}</p>
+                              {task.description && <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{task.description}</p>}
+                            </div>
+                            <div className="ml-2 flex-shrink-0 flex">
+                              <p className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(task.status)}`}>
+                                {task.status}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="mt-2 sm:flex sm:justify-between">
+                            <div className="sm:flex">
+                              <p className="flex items-center text-sm text-gray-500 dark:text-gray-400">
+                                <Calendar className="flex-shrink-0 mr-1.5 h-4 w-4 text-gray-400 dark:text-gray-500" />
+                                <span className="mr-1">Start:</span>
+                                {new Date(task.scheduled_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                              </p>
+                              <p className="mt-2 flex items-center text-sm text-gray-500 dark:text-gray-400 sm:mt-0 sm:ml-6">
+                                <Clock className="flex-shrink-0 mr-1.5 h-4 w-4 text-gray-400 dark:text-gray-500" />
+                                <span className="mr-1">End:</span>
+                                {task.end_at ? new Date(task.end_at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }) : 'N/A'}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      </li>
+                    ))}
+                    {tasks.length === 0 && (
+                      <li className="px-4 py-12 text-center text-gray-500 dark:text-gray-400">
+                        No tasks scheduled. <button onClick={() => setShowTaskModal(true)} className="text-indigo-600 underline">Add one</button> to get started!
+                      </li>
+                    )}
+                  </ul>
+                )}
+              </div>
+            </>
+          )}
+        </main>
       </div>
 
       {/* Create Task Modal */}
@@ -588,7 +670,12 @@ export default function Dashboard({ user, refreshUser, onLogout }: DashboardProp
                           disabled={schedulingTask}
                           className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-indigo-600 text-base font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:ml-3 sm:w-auto sm:text-sm disabled:opacity-50"
                         >
-                          {schedulingTask ? <Loader2 className="animate-spin h-5 w-5" /> : 'Schedule'}
+                          {schedulingTask ? (
+                            <>
+                                <Loader2 className="animate-spin -ml-1 mr-2 h-4 w-4" />
+                                Scheduling...
+                            </>
+                          ) : 'Schedule'}
                         </button>
                         <button
                           type="button"

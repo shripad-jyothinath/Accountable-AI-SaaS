@@ -10,7 +10,7 @@ import {
   BarChart,
   Bar
 } from 'recharts';
-import { Users, DollarSign, TrendingUp, CheckCircle, Clock, RefreshCw } from 'lucide-react';
+import { Users, DollarSign, TrendingUp, CheckCircle, Clock, RefreshCw, ExternalLink } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '../supabaseClient';
 
 const MOCK_REVENUE_DATA = [
@@ -42,6 +42,7 @@ interface AdminTaskView {
   user_id: string;
   user_email: string;
   whatsapp_number?: string;
+  proof_url?: string;
 }
 
 export default function Admin({ credentials }: { credentials?: any }) {
@@ -233,6 +234,7 @@ export default function Admin({ credentials }: { credentials?: any }) {
                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">User</th>
                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Task</th>
                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Schedule</th>
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Proof</th>
                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Status</th>
                 <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Actions</th>
               </tr>
@@ -253,6 +255,15 @@ export default function Admin({ credentials }: { credentials?: any }) {
                     <div className="text-xs text-gray-500 dark:text-gray-400">
                        End: {task.end_at ? new Date(task.end_at).toLocaleTimeString() : 'N/A'}
                     </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    {task.proof_url ? (
+                      <a href={task.proof_url} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300 flex items-center">
+                        <ExternalLink className="w-4 h-4 mr-1" /> Link
+                      </a>
+                    ) : (
+                      <span className="text-gray-400 text-xs italic">None</span>
+                    )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
@@ -277,7 +288,7 @@ export default function Admin({ credentials }: { credentials?: any }) {
               ))}
               {adminTasks.length === 0 && (
                 <tr>
-                   <td colSpan={5} className="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
+                   <td colSpan={6} className="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
                       No tasks found.
                    </td>
                 </tr>

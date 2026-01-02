@@ -86,6 +86,14 @@ BEGIN
   END IF;
 END $$;
 
+-- SAFETY: Add Proof URL column
+DO $$
+BEGIN
+    ALTER TABLE public.tasks ADD COLUMN IF NOT EXISTS proof_url text;
+EXCEPTION
+    WHEN duplicate_column THEN RAISE NOTICE 'column exists';
+END $$;
+
 -- ==============================================================================
 -- 5. Enable RLS for Tasks
 -- ==============================================================================
@@ -136,9 +144,9 @@ create trigger on_auth_user_created
   for each row execute procedure public.handle_new_user();
 
 -- ==============================================================================
--- 7. ADMIN VIEW
+-- 7. ADMIN VIEW (With Updatable Trigger and Proof URL)
 -- ==============================================================================
-drop view if exists public.admin_task_overview;
+drop view if exists public.admin_task_overview cascade;
 create or replace view public.admin_task_overview as
 select
   t.id as task_id,
@@ -147,11 +155,34 @@ select
   t.status,
   t.scheduled_at,
   t.end_at,
+  t.proof_url,
   p.id as user_id,
   p.email as user_email,
   p.whatsapp_number
 from public.tasks t
 join public.profiles p on t.user_id = p.id;
+
+-- FUNCTION: Handle updates to the view by updating underlying tasks table
+create or replace function public.update_admin_task_overview()
+returns trigger as $$
+begin
+  -- Update the tasks table based on the view update
+  update public.tasks
+  set 
+    status = new.status,
+    title = new.title,
+    description = new.description,
+    proof_url = new.proof_url
+  where id = old.task_id;
+  return new;
+end;
+$$ language plpgsql;
+
+-- TRIGGER: INSTEAD OF UPDATE on the view
+create trigger update_admin_task_overview_trigger
+  instead of update on public.admin_task_overview
+  for each row
+  execute procedure public.update_admin_task_overview();
 
 -- ==============================================================================
 -- 8. CALL DEDUCTION TRIGGER

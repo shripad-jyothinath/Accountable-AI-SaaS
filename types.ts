@@ -24,6 +24,7 @@ export interface Task {
   scheduled_at: string;
   end_at?: string;
   status: 'pending' | 'verified' | 'missed';
+  proof_url?: string;
   notes?: string;
 }
 

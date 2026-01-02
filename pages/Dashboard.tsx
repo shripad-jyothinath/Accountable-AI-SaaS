@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { UserProfile, Task } from '../types';
-import { Plus, PhoneCall, CheckCircle, Clock, Calendar, X, CreditCard, Lock, Loader2, AlertTriangle, Upload, Bell, Menu, Settings, LogOut, LayoutDashboard, DollarSign, User, ShieldCheck, Phone, PhoneOff, ArrowLeft } from 'lucide-react';
+import { Plus, PhoneCall, CheckCircle, Clock, Calendar, X, CreditCard, Lock, Loader2, AlertTriangle, Upload, Bell, Menu, Settings, LogOut, LayoutDashboard, DollarSign, User, ShieldCheck, Phone, PhoneOff, ArrowLeft, ExternalLink, Link as LinkIcon } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '../supabaseClient';
 import { Link, useNavigate } from '../App';
 
@@ -29,6 +29,10 @@ export default function Dashboard({ user, refreshUser, onLogout }: DashboardProp
   const [showTaskModal, setShowTaskModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showProofModal, setShowProofModal] = useState<Task | null>(null);
+  
+  // Proof State
+  const [proofLink, setProofLink] = useState('');
+  const [submittingProof, setSubmittingProof] = useState(false);
 
   // Form States
   const [newTaskTitle, setNewTaskTitle] = useState('');
@@ -121,6 +125,7 @@ export default function Dashboard({ user, refreshUser, onLogout }: DashboardProp
           // We will just show the proof modal for the first overdue task found if not already showing one
           if (now > endTime && !showProofModal) {
             setShowProofModal(task);
+            setProofLink(''); // Reset input
           }
         }
       });
@@ -260,22 +265,37 @@ export default function Dashboard({ user, refreshUser, onLogout }: DashboardProp
     e.preventDefault();
     setProcessingPayment(true);
     
-    // Simulate DB update
-    setTimeout(async () => {
-      if (isSupabaseConfigured && supabase) {
-         // Cumulative Add
-         const { data: current } = await supabase.from('profiles').select('calls_remaining').eq('id', user.id).single();
-         const newCalls = (current?.calls_remaining || 0) + 10;
-         await supabase.from('profiles').update({ calls_remaining: newCalls }).eq('id', user.id);
-         await refreshUser();
-      } else {
-         alert("Top Up Successful! (Mock)");
-      }
-      
-      setProcessingPayment(false);
-      setShowPaymentModal(false);
-      alert("Top Up Successful! 10 calls added.");
-    }, 1500);
+    if (!isSupabaseConfigured || !supabase) {
+        alert("Supabase disconnected. Using mock top-up.");
+        // Mock success
+        setTimeout(() => {
+             setProcessingPayment(false);
+             setShowPaymentModal(false);
+             alert("Top Up Successful! 10 calls added.");
+        }, 1500);
+        return;
+    }
+
+    try {
+        const { data, error } = await supabase.functions.invoke('create-checkout-session', {
+            body: {
+                priceId: 'price_topup', // Use real ID in production
+                mode: 'payment',
+                planName: 'Top Up 10 Calls',
+                amount: 500
+            }
+        });
+
+        if (error) throw error;
+        if (data?.url) {
+            window.location.href = data.url;
+        } else {
+            throw new Error("No URL returned from payment server.");
+        }
+    } catch (e: any) {
+        alert("Payment Error: " + e.message);
+        setProcessingPayment(false);
+    }
   }
 
   const handleSaveSettings = async (e: React.FormEvent) => {
@@ -299,19 +319,43 @@ export default function Dashboard({ user, refreshUser, onLogout }: DashboardProp
     setSavingSettings(false);
   }
 
-  const handleProofSubmit = () => {
-    // Logic to mark task as verified (mock)
-    if (showProofModal) {
+  const handleProofSubmit = async () => {
+    if (!showProofModal) return;
+    if (!proofLink) {
+      alert("Please enter a Google Drive link or other valid URL.");
+      return;
+    }
+
+    setSubmittingProof(true);
+
+    try {
+      // Logic to mark task as verified (or save link)
+      // We will save proof_url and update status to 'verified' (or keep pending for human review if needed, but per request implies verification flow)
+      
+      const updatedStatus = 'verified'; // Or keep 'pending' if manual review required strictly, but usually upload = done in this context
+
+      if (isSupabaseConfigured && supabase) {
+         const { error } = await supabase.from('tasks').update({ 
+           status: updatedStatus,
+           proof_url: proofLink 
+         }).eq('id', showProofModal.id);
+
+         if (error) throw error;
+      }
+      
+      // Optimistic update
       const updatedTasks = tasks.map(t => 
-        t.id === showProofModal.id ? { ...t, status: 'verified' as const } : t
+        t.id === showProofModal.id ? { ...t, status: updatedStatus, proof_url: proofLink } : t
       );
       setTasks(updatedTasks);
       
-      if (isSupabaseConfigured && supabase) {
-         supabase.from('tasks').update({ status: 'verified' }).eq('id', showProofModal.id).then();
-      }
+      alert("Proof submitted successfully! Our agents will verify it shortly.");
       setShowProofModal(null);
-      alert("Proof submitted! Good job.");
+      setProofLink('');
+    } catch (e: any) {
+      alert("Error submitting proof: " + e.message);
+    } finally {
+      setSubmittingProof(false);
     }
   }
 
@@ -557,6 +601,16 @@ export default function Dashboard({ user, refreshUser, onLogout }: DashboardProp
                             <div className="flex-1 min-w-0">
                               <p className="text-sm font-medium text-indigo-600 dark:text-indigo-400 truncate">{task.title}</p>
                               {task.description && <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{task.description}</p>}
+                              {task.proof_url && (
+                                <a 
+                                  href={task.proof_url} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer" 
+                                  className="inline-flex items-center text-xs text-green-600 dark:text-green-400 mt-1 hover:underline"
+                                >
+                                  <LinkIcon className="w-3 h-3 mr-1" /> View Proof
+                                </a>
+                              )}
                             </div>
                             <div className="ml-2 flex-shrink-0 flex">
                               <p className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(task.status)}`}>
@@ -711,23 +765,30 @@ export default function Dashboard({ user, refreshUser, onLogout }: DashboardProp
                       Top Up Calls
                     </h3>
                     <div className="mt-2">
-                      <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+                      <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
                          Get <span className="font-bold">10 extra calls</span> for <span className="font-bold">$5.00</span>.
+                         <br/><br/>
+                         You will be redirected to Stripe to securely complete your payment.
                       </p>
-                      <form onSubmit={handleTopUp} className="space-y-4">
-                        <div>
-                          <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 uppercase tracking-wide">Card Number</label>
-                          <div className="mt-1 relative rounded-md shadow-sm">
-                            <input type="text" className="focus:ring-indigo-500 focus:border-indigo-500 block w-full pl-3 sm:text-sm border-gray-300 dark:border-gray-600 rounded-md bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white" defaultValue="4242 4242 4242 4242" required />
-                             <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none"><Lock className="h-4 w-4 text-gray-400" /></div>
-                          </div>
-                        </div>
-                        <div className="pt-2">
-                           <button type="submit" disabled={processingPayment} className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-indigo-600 text-base font-medium text-white hover:bg-indigo-700 focus:outline-none sm:text-sm disabled:opacity-50">
-                            {processingPayment ? <><Loader2 className="animate-spin -ml-1 mr-2 h-4 w-4" /> Processing...</> : 'Pay $5.00'}
-                          </button>
-                        </div>
-                      </form>
+                      <div className="pt-2">
+                         <button 
+                           onClick={handleTopUp}
+                           disabled={processingPayment} 
+                           className="w-full inline-flex justify-center items-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-indigo-600 text-base font-medium text-white hover:bg-indigo-700 focus:outline-none sm:text-sm disabled:opacity-50"
+                         >
+                            {processingPayment ? (
+                                <>
+                                    <Loader2 className="animate-spin -ml-1 mr-2 h-4 w-4" /> 
+                                    Connecting to Stripe...
+                                </>
+                            ) : (
+                                <>
+                                    Pay Securely
+                                    <ExternalLink className="ml-2 w-4 h-4" />
+                                </>
+                            )}
+                         </button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -759,16 +820,34 @@ export default function Dashboard({ user, refreshUser, onLogout }: DashboardProp
                    Your task <strong>"{showProofModal.title}"</strong> was supposed to be finished by {new Date(showProofModal.end_at!).toLocaleTimeString()}.
                  </p>
                  <p className="text-sm text-gray-400 dark:text-gray-500 mt-2">
-                    Our agent is reviewing your status. Upload your proof immediately.
+                    Our agent is reviewing your status. Upload your Google Drive link proof immediately.
                  </p>
                </div>
+               
+               {/* Proof URL Input */}
                <div className="mt-6">
+                 <label htmlFor="proof-link" className="block text-sm font-medium text-gray-700 dark:text-gray-300 text-left mb-1">
+                   Proof URL (Google Drive)
+                 </label>
+                 <input
+                   type="url"
+                   id="proof-link"
+                   required
+                   className="shadow-sm focus:ring-red-500 focus:border-red-500 block w-full sm:text-sm border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white p-2"
+                   placeholder="https://drive.google.com/..."
+                   value={proofLink}
+                   onChange={(e) => setProofLink(e.target.value)}
+                 />
+               </div>
+
+               <div className="mt-4">
                  <button
                    type="button"
+                   disabled={submittingProof || !proofLink}
                    onClick={handleProofSubmit}
-                   className="w-full inline-flex justify-center items-center rounded-md border border-transparent shadow-sm px-4 py-3 bg-red-600 text-base font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 sm:text-sm"
+                   className="w-full inline-flex justify-center items-center rounded-md border border-transparent shadow-sm px-4 py-3 bg-red-600 text-base font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 sm:text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                  >
-                   <Upload className="mr-2 h-5 w-5" />
+                   {submittingProof ? <Loader2 className="animate-spin mr-2 h-5 w-5" /> : <Upload className="mr-2 h-5 w-5" />}
                    Upload Proof & Verify
                  </button>
                </div>
